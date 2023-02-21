@@ -1,6 +1,8 @@
-﻿using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using Sabio.Models;
+using Sabio.Models.Domain;
 using Sabio.Models.Domain.DiplomaticMissions;
 using Sabio.Models.Requests.DiplomaticMissions;
 using Sabio.Services;
@@ -8,6 +10,7 @@ using Sabio.Services.Interfaces;
 using Sabio.Web.Controllers;
 using Sabio.Web.Models.Responses;
 using System;
+using System.Collections.Generic;
 
 namespace Sabio.Web.Api.Controllers
 {
@@ -32,11 +35,11 @@ namespace Sabio.Web.Api.Controllers
 
         }
 
-        [HttpPost("scrape")]
-        public ActionResult<ItemResponse<SuccessResponse>> ScrapeEmbassyInfo(string url)
+        [HttpPost("contact")]
+        public ActionResult<ItemResponse<SuccessResponse>> ScrapeEmbassyInfo()
         {
 
-            int code = 200;
+            int code = 201;
             BaseResponse response = null;
 
             try
@@ -45,7 +48,7 @@ namespace Sabio.Web.Api.Controllers
                 if (response == null)
                 {
                     code = 404;
-                    response = new ErrorResponse("No HTML document found");
+                    response = new ErrorResponse("No Ids to show");
                 }
                 else
                 {
@@ -62,8 +65,8 @@ namespace Sabio.Web.Api.Controllers
             return StatusCode(code, response); ;
         }
 
-
         [HttpGet("")]
+        [AllowAnonymous]
         public ActionResult<ItemResponse<Paged<DiplomaticMission>>> GetAllByPage(int pageIndex, int pageSize)
         {
             ActionResult result = null;
@@ -90,6 +93,7 @@ namespace Sabio.Web.Api.Controllers
         }
 
         [HttpGet("embassies")]
+        [AllowAnonymous]
         public ActionResult<ItemResponse<Paged<DiplomaticMission>>> GetAllByEmbassy(int pageIndex, int pageSize)
         {
             ActionResult result = null;
@@ -116,6 +120,7 @@ namespace Sabio.Web.Api.Controllers
         }
 
         [HttpGet("consulates")]
+        [AllowAnonymous]
         public ActionResult<ItemResponse<Paged<DiplomaticMission>>> GetAllByConsulate(int pageIndex, int pageSize)
         {
             ActionResult result = null;
@@ -142,6 +147,7 @@ namespace Sabio.Web.Api.Controllers
         }
 
         [HttpGet("country/{countryId:int}")]
+        [AllowAnonymous]
         public ActionResult<ItemResponse<Paged<DiplomaticMission>>> GetAllByCountryId(int pageIndex, int pageSize, int countryId)
         {
             ActionResult result = null;
@@ -224,6 +230,60 @@ namespace Sabio.Web.Api.Controllers
             }
 
             return StatusCode(iCode, response);
+        }
+
+        [HttpPut("delete/{id:int}")]
+        public ActionResult<SuccessResponse> Delete(DiplomaticMissionUpdateRequest model)
+        {
+
+            int iCode = 200;
+
+            BaseResponse response = null;
+
+            try
+            {
+
+                _service.Delete(model);
+
+                response = new SuccessResponse();
+
+            }
+            catch (Exception ex)
+            {
+
+                iCode = 500;
+                response = new ErrorResponse(ex.Message);
+
+            }
+
+            return StatusCode(iCode, response);
+        }
+
+        [HttpGet("list")]
+        [AllowAnonymous]
+        public ActionResult<ItemsResponse<DiplomaticMission>> GetAllFees()
+        {
+            int code = 200;
+            BaseResponse response = null;
+            try
+            {
+                List<DiplomaticMission> list = _service.GetAll();
+
+                if (list == null)
+                {
+                    code = 404;
+                    response = new ErrorResponse("Diplomatic Mission record not found");
+                }
+                else
+                {
+                    response = new ItemsResponse<DiplomaticMission> { Items = list };
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError(ex.ToString());
+            }
+            return StatusCode(code, response);
         }
 
     }

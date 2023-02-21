@@ -2,14 +2,17 @@
 using Sabio.Data;
 using Sabio.Data.Providers;
 using Sabio.Models;
+using Sabio.Models.Domain;
 using Sabio.Models.Domain.DiplomaticMissions;
 using Sabio.Models.Requests;
 using Sabio.Models.Requests.DiplomaticMissions;
 using Sabio.Services.Interfaces;
+using System;
 using System.Collections.Generic;
 using System.Data;
 using System.Data.SqlClient;
 using System.Linq;
+using System.Web;
 
 namespace Sabio.Services
 {
@@ -35,7 +38,7 @@ namespace Sabio.Services
             var embassies = doc.DocumentNode.SelectNodes("//a[starts-with(@href, '/content/travel/en/us-visas/Supplements/Supplements_by_Post/')]").ToList();
             var links = embassies.Select(a => a.Attributes["href"].Value).ToList();
 
-            List<EmbassyUrlAddRequest> embassyNodes = new();
+            List<DiplomaticMissionAddRequest> embassyNodes = new();
 
             foreach (var item in links)
             {
@@ -43,29 +46,71 @@ namespace Sabio.Services
 
                 embassyLink = "https://travel.state.gov" + item.ToString();
                 HtmlDocument target = web.Load(embassyLink);
-                var embassyinfo = target.DocumentNode.SelectNodes("//div[starts-with(@class, 'contact')]").ToList();
+                var embassyinfo = target.DocumentNode.SelectNodes("//div[starts-with(@class, 'contact')]");
 
-                EmbassyUrlAddRequest info = new();
+                if (embassyinfo == null)
+                {
+                    continue;
+                }
+                var embassyList = embassyinfo.ToList();
+                
+                DiplomaticMissionAddRequest info = new();
                 var embassyNode = embassyinfo[0];
-
-                info.Name = embassyNode.SelectSingleNode("//div[@class='contact-title']").InnerText;
+               
+                info.CountryId = 0;
+                info.Name = target.DocumentNode.SelectSingleNode("(//h1)[3]").InnerHtml; 
+                info.LocationId = 0;
                 info.Phone = embassyNode.SelectSingleNode("//div[@class='contact-data']").InnerText;
                 info.Email = embassyNode.SelectSingleNode("//a[starts-with(@href, 'mailto')]").InnerText;
                 info.Website = embassyLink;
-                embassyNodes.Add(info);
-
-                AddEmbassy(info);
+                info.IsActive = true;
+                info.IsEmbassy = info.Name.Contains("Embassy");
+                info.IsConsulate = info.Name.Contains("Consulate");
+                embassyNodes.Add(info);             
             }
+            BatchInsert(embassyNodes);
         }
 
-        public int AddEmbassy(EmbassyUrlAddRequest model)
+        public List<DiplomaticMissionsIdPair> BatchInsert(List<DiplomaticMissionAddRequest> model)
+        {
+            List<DiplomaticMissionsIdPair> ids = null;
+
+            DataTable myParamValue = null;
+
+            if(model != null)
+            {
+                 myParamValue = MapContactInfoToDiplomaticMissions(model);
+            }
+            _data.ExecuteCmd("[dbo].[DiplomaticMissions_BatchInsertV2]",
+                inputParamMapper: delegate (SqlParameterCollection sqlParams)
+                {
+                    sqlParams.AddWithValue("@BatchDiplomaticMissions", myParamValue);
+                },
+                
+                singleRecordMapper: delegate (IDataReader reader, short set)
+                {
+                    DiplomaticMissionsIdPair pair = new DiplomaticMissionsIdPair();
+                    int startingIndex = 0;
+                    pair.NewId = reader.GetInt32(startingIndex++);
+                    pair.ExternalId = reader.GetInt32(startingIndex++);
+
+                    if (ids == null)
+                    {
+                        ids = new List<DiplomaticMissionsIdPair>();
+                    }
+                    ids.Add(pair);
+                });
+            return ids;      
+        }
+
+        public int AddEmbassy(DiplomaticMissionAddRequest model)
         {
             int id = 0;
 
-            string procName = "[dbo].[EmbassyContact_Insert]";
+            string procName = "[dbo].[DiplomaticMissions_Insert]";
             _data.ExecuteNonQuery(procName, inputParamMapper: delegate (SqlParameterCollection col)
             {
-                AddCommonEmbassyParams(model, col);
+                AddCommonParams(model, col);
 
                 SqlParameter idOut = new SqlParameter("@Id", SqlDbType.Int);
                 idOut.Direction = ParameterDirection.Output;
@@ -82,6 +127,29 @@ namespace Sabio.Services
             });
 
             return id;
+        }
+
+        public List<DiplomaticMission> GetAll()
+        {
+            List<DiplomaticMission> list = null;
+
+                _data.ExecuteCmd("[dbo].[DiplomaticMissions_SelectAll_NotPaged", inputParamMapper: null
+                , singleRecordMapper: delegate (IDataReader reader, short set)
+                {
+                    int startingIndex = 0;
+
+                    DiplomaticMission dm = MapDiplomaticMission(reader, ref startingIndex);
+
+
+
+                    if (list == null)
+                    {
+                        list = new List<DiplomaticMission>();
+                    }
+
+                    list.Add(dm);
+                });
+            return list;
         }
 
         public Paged<DiplomaticMission> GetAllByPage(int pageIndex, int pageSize)
@@ -276,22 +344,21 @@ namespace Sabio.Services
 
                 AddCommonParams(model, col);
                 col.AddWithValue("@Id", model.Id);
-                col.AddWithValue("@isActive", model.IsActive);
+
             },
 
             returnParameters: null);
 
         }
 
-        private static void AddCommonEmbassyParams(EmbassyUrlAddRequest model, SqlParameterCollection col)
+        public void Delete(DiplomaticMissionUpdateRequest model)
         {
-
-
-            col.AddWithValue("@Name", model.Name);
-            col.AddWithValue("@Phone", model.Phone);
-            col.AddWithValue("@Email", model.Email);
-            col.AddWithValue("@Website", model.Website);
-
+            string procName = "[dbo].[DiplomaticMissions_Delete]";
+            _data.ExecuteNonQuery(procName, inputParamMapper: delegate (SqlParameterCollection col)
+            {
+                col.AddWithValue("@Id", model.Id);
+            },
+            returnParameters: null);
         }
 
         private static void AddCommonParams(DiplomaticMissionAddRequest model, SqlParameterCollection col)
@@ -303,6 +370,7 @@ namespace Sabio.Services
             col.AddWithValue("@Phone", model.Phone);
             col.AddWithValue("@Email", model.Email);
             col.AddWithValue("@Website", model.Website);
+            col.AddWithValue("@IsActive", model.IsActive);
             col.AddWithValue("@IsEmbassy", model.IsEmbassy);
             col.AddWithValue("@IsConsulate", model.IsConsulate);
 
@@ -331,6 +399,43 @@ namespace Sabio.Services
 
             return diplomaticMission;
 
+        }
+
+        private DataTable MapContactInfoToDiplomaticMissions(List<DiplomaticMissionAddRequest> contacts)
+        {
+            DataTable dt = new DataTable();
+
+            dt.Columns.Add("CountryId", typeof(Int32));
+            dt.Columns.Add("Name", typeof(string));
+            dt.Columns.Add("LocationId", typeof(Int32));
+            dt.Columns.Add("Phone", typeof(string));
+            dt.Columns.Add("Email", typeof(string));
+            dt.Columns.Add("Website", typeof(string));
+            dt.Columns.Add("IsActive", typeof(bool));
+            dt.Columns.Add("IsEmbassy", typeof(bool));
+            dt.Columns.Add("IsConsulate", typeof(bool));
+
+            if(contacts != null)
+            {
+                foreach (DiplomaticMissionAddRequest singleContact in contacts)
+                {
+                    DataRow dr = dt.NewRow();
+                    int startingIndex = 0;
+
+                    dr.SetField(startingIndex++, singleContact.CountryId);
+                    dr.SetField(startingIndex++, singleContact.Name);
+                    dr.SetField(startingIndex++, singleContact.LocationId);
+                    dr.SetField(startingIndex++, singleContact.Phone);
+                    dr.SetField(startingIndex++, singleContact.Email);
+                    dr.SetField(startingIndex++, singleContact.Website);
+                    dr.SetField(startingIndex++, singleContact.IsActive);
+                    dr.SetField(startingIndex++, singleContact.IsEmbassy);
+                    dr.SetField(startingIndex++, singleContact.IsConsulate);
+
+                    dt.Rows.Add(dr);
+                }
+            }            
+            return dt;
         }
 
 
