@@ -4,7 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace Sabio.Models.Requests.DiplomaticMissions
+namespace Models.Requests.DiplomaticMissions
 {
     public class DiplomaticMissionUpdateRequest : DiplomaticMissionAddRequest, IModelIdentifier
     {
