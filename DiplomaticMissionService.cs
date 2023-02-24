@@ -1,20 +1,7 @@
 ﻿using HtmlAgilityPack;
-using Sabio.Data;
-using Sabio.Data.Providers;
-using Sabio.Models;
-using Sabio.Models.Domain;
-using Sabio.Models.Domain.DiplomaticMissions;
-using Sabio.Models.Requests;
-using Sabio.Models.Requests.DiplomaticMissions;
-using Sabio.Services.Interfaces;
-using System;
-using System.Collections.Generic;
-using System.Data;
-using System.Data.SqlClient;
-using System.Linq;
-using System.Web;
 
-namespace Sabio.Services
+
+namespace Services
 {
     public class DiplomaticMissionService : IDiplomaticMissionService
     {
