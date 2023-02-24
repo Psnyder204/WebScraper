@@ -1,6 +1,6 @@
 ﻿using System;
 
-namespace Sabio.Models.Requests.DiplomaticMissions
+namespace Models.Requests.DiplomaticMissions
 {
     public class DiplomaticMissionAddRequest
     {
